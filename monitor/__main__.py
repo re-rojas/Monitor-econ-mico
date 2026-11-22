@@ -54,7 +54,12 @@ def main() -> None:
     if args.no_notify:
         print(msg)
     else:
-        notify.send_telegram(msg)
+        try:
+            notify.send_telegram(msg)
+        except Exception as e:  # noqa: BLE001
+            logging.warning("Telegram falló: %s", e)
+    # Hilos de descarga abandonados por timeout no deben retener el proceso.
+    os._exit(0)
 
 
 if __name__ == "__main__":

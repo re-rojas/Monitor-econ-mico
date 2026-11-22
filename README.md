@@ -21,7 +21,7 @@ Monitor diario de indicadores para decidir cuándo entrar al S&P 500. Corre en G
 | Wikipedia | Lista de componentes del S&P 500 (para breadth) | No |
 | multpl.com | P/E trailing y CAPE mensual | No |
 
-Si una fuente falla, el dashboard se genera igual y la lista "Avisos de datos" indica qué faltó.
+Si una fuente falla o se cuelga, el dashboard se genera igual y la lista "Avisos de datos" indica qué faltó. Cada fuente tiene un límite de tiempo (`SOURCE_TIMEOUTS` en `monitor/sources.py`) y el job de GitHub se corta a los 15 minutos.
 
 ## Uso local (Windows, PowerShell)
 
@@ -52,7 +52,8 @@ python -m monitor
    - En Telegram habla con `@BotFather`, usa `/newbot` y copia el token.
    - Escríbele cualquier mensaje a tu bot y abre `https://api.telegram.org/bot<TOKEN>/getUpdates` para ver tu `chat.id`.
    - En el repo: **Settings → Secrets and variables → Actions** y crea `TELEGRAM_BOT_TOKEN` y `TELEGRAM_CHAT_ID`.
-5. **Actions → Monitor S&P 500 → Run workflow** para la primera corrida. Después corre solo.
+5. **FRED API key** (gratis, recomendado en GitHub Actions): pídela en https://fred.stlouisfed.org/docs/api/api_key.html y créala como secret `FRED_API_KEY`. Sin key se usa la descarga CSV pública, que desde servidores en la nube puede ser lenta.
+6. **Actions → Monitor S&P 500 → Run workflow** para la primera corrida. Después corre solo.
 
 El dashboard queda en `https://<tu-usuario>.github.io/<repo>/`.
 

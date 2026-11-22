@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import io
 import logging
+import os
+import threading
 import time
 from dataclasses import dataclass, field
 
@@ -29,7 +31,13 @@ class MarketData:
     errors: list[str] = field(default_factory=list)
 
 
-def _get(url: str, tries: int = 3, timeout: int = 30) -> requests.Response:
+# Límite duro (segundos) por fuente. Si una fuente se cuelga, se abandona y
+# el reporte sigue con "sin dato". Total máximo aprox. = suma de estos valores.
+SOURCE_TIMEOUTS = {"fred": 120, "prices": 120, "spx_full": 60, "breadth": 150, "valuation": 45}
+
+
+def _get(url: str, tries: int = 2, timeout: tuple[int, int] = (5, 20)) -> requests.Response:
+    """GET con timeout de conexión/lectura y reintentos cortos."""
     last = None
     for i in range(tries):
         try:
@@ -38,22 +46,64 @@ def _get(url: str, tries: int = 3, timeout: int = 30) -> requests.Response:
             return r
         except Exception as e:  # noqa: BLE001
             last = e
-            time.sleep(2 ** i)
+            if i < tries - 1:
+                time.sleep(2)
     raise last  # type: ignore[misc]
 
 
-def fetch_fred(series: dict[str, str], start: str) -> tuple[pd.DataFrame, list[str]]:
-    frames, errors = [], []
-    for sid in series:
-        url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={sid}&cosd={start}"
+def run_with_timeout(name: str, fn, default, seconds: int):
+    """Ejecuta fn() en un hilo daemon; si excede `seconds`, devuelve default.
+    yfinance no expone un timeout global fiable, así que esto es el seguro."""
+    box: dict = {}
+
+    def target():
         try:
-            df = pd.read_csv(io.StringIO(_get(url).text))
-            df.columns = ["date", sid]
-            df["date"] = pd.to_datetime(df["date"])
-            df[sid] = pd.to_numeric(df[sid], errors="coerce")  # FRED usa "." para vacíos
-            frames.append(df.set_index("date"))
+            box["value"] = fn()
+        except Exception as e:  # noqa: BLE001
+            box["error"] = e
+
+    t0 = time.monotonic()
+    log.info("→ %s (límite %ss)", name, seconds)
+    th = threading.Thread(target=target, daemon=True)
+    th.start()
+    th.join(seconds)
+    took = time.monotonic() - t0
+    if th.is_alive():
+        log.warning("✗ %s: excedió %ss, se omite", name, seconds)
+        return default[0], list(default[1]) + [f"{name}: tiempo agotado ({seconds}s)"]
+    if "error" in box:
+        log.warning("✗ %s: %s", name, box["error"])
+        return default[0], list(default[1]) + [f"{name}: {box['error']}"]
+    log.info("✓ %s en %.0fs", name, took)
+    return box["value"]
+
+
+def _fred_one(sid: str, start: str, key: str | None) -> pd.DataFrame:
+    if key:  # API oficial: más estable desde servidores en la nube
+        url = (f"https://api.stlouisfed.org/fred/series/observations?series_id={sid}"
+               f"&observation_start={start}&file_type=json&api_key={key}")
+        obs = _get(url).json()["observations"]
+        df = pd.DataFrame(obs)[["date", "value"]]
+    else:
+        url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={sid}&cosd={start}"
+        df = pd.read_csv(io.StringIO(_get(url).text))
+    df.columns = ["date", sid]
+    df["date"] = pd.to_datetime(df["date"])
+    df[sid] = pd.to_numeric(df[sid], errors="coerce")  # FRED usa "." para vacíos
+    return df.set_index("date")
+
+
+def fetch_fred(series: dict[str, str], start: str) -> tuple[pd.DataFrame, list[str]]:
+    key = os.getenv("FRED_API_KEY") or None
+    frames, errors = [], []
+    for i, sid in enumerate(series):
+        try:
+            frames.append(_fred_one(sid, start, key))
         except Exception as e:  # noqa: BLE001
             errors.append(f"FRED {sid}: {e}")
+            if i == 1 and not frames:  # las dos primeras fallaron: FRED no responde
+                errors.append("FRED: se omiten las demás series (sin respuesta)")
+                break
     fred = pd.concat(frames, axis=1).sort_index() if frames else pd.DataFrame()
     return fred, errors
 
@@ -62,7 +112,7 @@ def fetch_prices(tickers: list[str], period: str) -> tuple[pd.DataFrame, list[st
     import yfinance as yf
 
     try:
-        raw = yf.download(tickers, period=period, auto_adjust=True, progress=False, threads=True)
+        raw = yf.download(tickers, period=period, auto_adjust=True, progress=False, threads=True, timeout=20)
         close = raw["Close"] if isinstance(raw.columns, pd.MultiIndex) else raw[["Close"]]
         if not isinstance(raw.columns, pd.MultiIndex):
             close.columns = tickers[:1]
@@ -76,7 +126,7 @@ def fetch_spx_full() -> tuple[pd.Series, list[str]]:
     import yfinance as yf
 
     try:
-        s = yf.Ticker("^GSPC").history(period="max", auto_adjust=True)["Close"]
+        s = yf.Ticker("^GSPC").history(period="max", auto_adjust=True, timeout=20)["Close"]
         s.index = s.index.tz_localize(None)
         return s, []
     except Exception as e:  # noqa: BLE001
@@ -90,7 +140,8 @@ def fetch_breadth() -> tuple[float | None, list[str]]:
     try:
         html = _get("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies").text
         tickers = pd.read_html(io.StringIO(html))[0]["Symbol"].str.replace(".", "-", regex=False).tolist()
-        raw = yf.download(tickers, period="1y", auto_adjust=True, progress=False, threads=True)["Close"]
+        raw = yf.download(tickers, period="1y", auto_adjust=True, progress=False, threads=True,
+                          timeout=20)["Close"]
         valid = raw.dropna(axis=1, thresh=200)
         above = (valid.iloc[-1] > valid.rolling(200).mean().iloc[-1]).sum()
         return round(100 * above / valid.shape[1], 1), []
@@ -122,15 +173,25 @@ def fetch_valuation() -> tuple[pd.Series, pd.Series, list[str]]:
 
 def fetch_all() -> MarketData:
     d = MarketData()
+    T = SOURCE_TIMEOUTS
     start = (pd.Timestamp.today() - pd.DateOffset(years=max(config.CHART_YEARS, 11))).strftime("%Y-%m-%d")
-    d.fred, e1 = fetch_fred(config.FRED_SERIES, start)
+    d.fred, e1 = run_with_timeout("FRED", lambda: fetch_fred(config.FRED_SERIES, start),
+                                  (pd.DataFrame(), []), T["fred"])
     tickers = list(config.INDEX_TICKERS) + list(config.AI_BASKET)
-    d.prices, e2 = fetch_prices(tickers, f"{config.CHART_YEARS}y")
-    d.spx_full, e3 = fetch_spx_full()
+    d.prices, e2 = run_with_timeout("Precios yfinance", lambda: fetch_prices(tickers, f"{config.CHART_YEARS}y"),
+                                    (pd.DataFrame(), []), T["prices"])
+    d.spx_full, e3 = run_with_timeout("S&P 500 historia", fetch_spx_full,
+                                      (pd.Series(dtype=float), []), T["spx_full"])
     e4: list[str] = []
     if config.COMPUTE_BREADTH:
-        d.breadth_pct_above_200, e4 = fetch_breadth()
-    d.pe_trailing, d.cape, e5 = fetch_valuation()
+        d.breadth_pct_above_200, e4 = run_with_timeout("Breadth", fetch_breadth, (None, []), T["breadth"])
+
+    def _val():
+        pe, cape, errs = fetch_valuation()
+        return (pe, cape), errs
+
+    (d.pe_trailing, d.cape), e5 = run_with_timeout(
+        "Valoración multpl", _val, ((pd.Series(dtype=float), pd.Series(dtype=float)), []), T["valuation"])
     d.errors = e1 + e2 + e3 + e4 + e5
     for err in d.errors:
         log.warning(err)

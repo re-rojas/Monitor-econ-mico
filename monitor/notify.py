@@ -41,6 +41,6 @@ def send_telegram(text: str) -> bool:
         return False
     r = requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
                       json={"chat_id": chat, "text": text, "parse_mode": "Markdown",
-                            "disable_web_page_preview": True}, timeout=30)
+                            "disable_web_page_preview": True}, timeout=(5, 20))
     r.raise_for_status()
     return True
