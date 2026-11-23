@@ -10,6 +10,7 @@ Monitor diario de indicadores para decidir cuándo entrar al S&P 500. Corre en G
 - **Indicadores clave**: S&P 500, caída desde máximo, media de 200 días, RSI, VIX y VIX/VIX3M, spreads High Yield e Investment Grade, Treasuries 10a/2a y tasa real, curva 10a−2a y 10a−3m, Fed funds, P/E, CAPE, prima de riesgo, breadth, Nasdaq-100, SOX, WTI, dólar, solicitudes de desempleo.
 - **Plan por tramos** (estrategia E2): qué tramos están activos según drawdown, semáforo o fecha límite.
 - **Gráficos** de 3 años y **canasta IA** (NVDA, MSFT, GOOGL, AMZN, META, AAPL, AVGO, TSLA, ORCL, CRWV, NBIS, ANT).
+- **Pestaña Histórico** (`historico.html`): compara índices, fondos, monedas y acciones por período o en crisis pasadas (1929, 1987, 2000, 2008, 2018, 2020, 2022) contra hoy. Activos y episodios en `HISTORY_ASSETS` y `HISTORY_EPISODES` de `config.py`.
 - **Histórico** de cada corrida en `data/history.csv`, para analizar o hacer backtest después.
 
 ## Fuentes
@@ -71,6 +72,10 @@ monitor/
   sources.py    descarga (FRED, yfinance, Wikipedia, multpl) + datos demo
   analysis.py   métricas, semáforo y tramos
   report.py     dashboard HTML (Plotly)
+  assets/       estilos (dashboard.css), JS y fuentes (Figtree + Noto Sans, licencia OFL)
+                que se incrustan en site/index.html; plotly.js se copia a site/assets/
+  history.py    datos compactos de la pestaña Histórico (site/assets/historico-data.js)
+  glossary.py   explicaciones en lenguaje simple de cada indicador (botones ⓘ)
   notify.py     mensaje de Telegram
   __main__.py   orquestación e histórico
 data/history.csv  una fila por corrida

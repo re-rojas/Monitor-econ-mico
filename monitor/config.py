@@ -76,3 +76,39 @@ TRANCHES = [
 TRANCHE_DEADLINE = "2027-05-22"
 
 TIMEZONE = "America/Santiago"
+
+# --- Pestaña "Histórico": activos para comparar (ticker de Yahoo Finance: nombre) ---
+# Se descarga toda la historia disponible. Para que la página siga liviana, los
+# datos más antiguos que HISTORY_DAILY_YEARS se guardan como cierre semanal.
+HISTORY_ASSETS = {
+    "Índices": {
+        "^GSPC": "S&P 500", "^NDX": "Nasdaq-100", "^DJI": "Dow Jones", "^RUT": "Russell 2000",
+        "^VIX": "VIX",
+    },
+    "Fondos y ETF": {
+        "SPY": "SPY (S&P 500)", "QQQ": "QQQ (Nasdaq-100)", "TLT": "TLT (bonos del Tesoro 20+ años)",
+        "GLD": "GLD (oro)", "EEM": "EEM (emergentes)", "ECH": "ECH (Chile)", "XLF": "XLF (financiero)",
+    },
+    "Materias primas": {"CL=F": "Petróleo WTI", "HG=F": "Cobre"},
+    "Monedas": {
+        "DX-Y.NYB": "Dólar (DXY)", "CLP=X": "Dólar / peso chileno", "EURUSD=X": "Euro / dólar",
+        "JPY=X": "Dólar / yen", "BTC-USD": "Bitcoin",
+    },
+    "Acciones": {
+        "AAPL": "Apple", "MSFT": "Microsoft", "NVDA": "Nvidia", "AMZN": "Amazon", "GOOGL": "Alphabet",
+        "META": "Meta", "JPM": "JPMorgan",
+    },
+}
+HISTORY_DAILY_YEARS = 10
+
+# Episodios para la vista "Comparar crisis". La fecha es el máximo del S&P 500
+# antes de cada caída; todos los activos se alinean en esa misma fecha.
+HISTORY_EPISODES = [
+    {"id": "1929", "name": "Crash de 1929", "start": "1929-09-16"},
+    {"id": "1987", "name": "Lunes negro 1987", "start": "1987-08-25"},
+    {"id": "2000", "name": "Burbuja .com", "start": "2000-03-24"},
+    {"id": "2008", "name": "Crisis 2008", "start": "2007-10-09"},
+    {"id": "2018", "name": "Fin de 2018", "start": "2018-09-20"},
+    {"id": "2020", "name": "COVID 2020", "start": "2020-02-19"},
+    {"id": "2022", "name": "Inflación 2022", "start": "2022-01-03"},
+]

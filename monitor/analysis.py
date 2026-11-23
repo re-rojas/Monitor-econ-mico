@@ -186,10 +186,10 @@ def score(signals: list[Signal]) -> tuple[int, int]:
 
 def score_label(pts: int) -> tuple[str, str]:
     if pts >= 5:
-        return "verde", "Varias señales de fondo alineadas"
+        return "verde", "Varias señales de fondo alineadas: se parece a buenos momentos de entrada del pasado"
     if pts >= 3:
-        return "amarillo", "Señales mixtas: zona de acumulación gradual"
-    return "rojo", "Pocas señales de fondo: el mercado aún no muestra capitulación"
+        return "amarillo", "Señales mixtas: zona para entrar de forma gradual"
+    return "rojo", "Pocas señales de fondo: todavía no hay una venta por pánico (capitulación)"
 
 
 def tranche_status(m: dict, pts: int, today: pd.Timestamp | None = None) -> list[dict]:

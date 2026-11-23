@@ -33,7 +33,8 @@ class MarketData:
 
 # Límite duro (segundos) por fuente. Si una fuente se cuelga, se abandona y
 # el reporte sigue con "sin dato". Total máximo aprox. = suma de estos valores.
-SOURCE_TIMEOUTS = {"fred": 120, "prices": 120, "spx_full": 60, "breadth": 150, "valuation": 45}
+SOURCE_TIMEOUTS = {"fred": 120, "prices": 120, "spx_full": 60, "breadth": 150, "valuation": 45,
+                   "history": 75}
 
 
 def _get(url: str, tries: int = 2, timeout: tuple[int, int] = (5, 20)) -> requests.Response:
@@ -171,6 +172,23 @@ def fetch_valuation() -> tuple[pd.Series, pd.Series, list[str]]:
     return pe, cape, errors
 
 
+def fetch_history() -> tuple[pd.DataFrame, list[str]]:
+    """Toda la historia disponible de los activos de la pestaña Histórico (cierres ajustados)."""
+    tickers = [t for g in config.HISTORY_ASSETS.values() for t in g]
+    close, errors = fetch_prices(tickers, "max")
+    if len(close):
+        close.index = pd.to_datetime(close.index).tz_localize(None) if close.index.tz is not None \
+            else pd.to_datetime(close.index)
+    return close, errors
+
+
+def load_history(demo: bool = False) -> tuple[pd.DataFrame, list[str]]:
+    if demo:
+        return demo_history(), ["DEMO: historia sintética, no real"]
+    return run_with_timeout("Histórico yfinance", fetch_history, (pd.DataFrame(), []),
+                            SOURCE_TIMEOUTS["history"])
+
+
 def fetch_all() -> MarketData:
     d = MarketData()
     T = SOURCE_TIMEOUTS
@@ -239,3 +257,25 @@ def demo_data(seed: int = 7) -> MarketData:
         cape=pd.Series(np.linspace(30, 37, len(months)), index=months),
         errors=["DEMO: datos sintéticos, no reales"],
     )
+
+
+def demo_history(seed: int = 11) -> pd.DataFrame:
+    """Historia sintética con caídas en las fechas de los episodios, para probar la pestaña sin red."""
+    rng = np.random.default_rng(seed)
+    idx = pd.bdate_range("1985-01-01", pd.Timestamp.today().normalize())
+    # (fecha, caída total, días de caída): la caída se reparte en esos días y se recupera en el triple.
+    shocks = [("1987-10-19", -0.22, 1), ("2000-03-27", -0.45, 600), ("2007-10-10", -0.55, 360),
+              ("2020-02-20", -0.34, 23), ("2022-01-04", -0.25, 190)]
+    out = {}
+    for g in config.HISTORY_ASSETS.values():
+        for t in g:
+            r = rng.normal(0.0003, 0.009, len(idx))
+            for day, size, n in shocks:
+                i = idx.searchsorted(pd.Timestamp(day))
+                k = size * rng.uniform(0.6, 1.4)
+                r[i:i + n] += np.log1p(k) / n
+                r[i + n:i + 4 * n] -= np.log1p(k) / (3 * n) * rng.uniform(0.7, 1.0)
+            s = pd.Series(100 * np.exp(np.cumsum(r)), index=idx)
+            start = rng.choice([0, 0, 2000, 4000, 5500])   # no todos tienen la misma historia
+            out[t] = s.iloc[start:]
+    return pd.DataFrame(out)

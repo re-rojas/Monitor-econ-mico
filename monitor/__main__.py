@@ -39,6 +39,11 @@ def main() -> None:
                          now.strftime("%Y-%m-%d %H:%M"), Path(args.out))
     print(f"Dashboard: {path}")
 
+    # Pestaña Histórico: si la descarga falla, la página se genera igual con un aviso.
+    hist, hist_err = sources.load_history(demo=args.demo)
+    hpath = report.render_history(hist, hist_err, now.strftime("%Y-%m-%d %H:%M"), Path(args.out))
+    print(f"Histórico: {hpath}")
+
     prev_pts = None
     if not args.demo:
         HISTORY.parent.mkdir(parents=True, exist_ok=True)
